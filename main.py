@@ -8,7 +8,6 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import tkinter.font as tkFont
 
-# 固定较小的字体，保证每个字符显示得足够小
 STYLE_CONFIG = {
     "bg": "#FFE4C4",
     "fg": "#8B4513",
@@ -19,7 +18,6 @@ STYLE_CONFIG = {
 
 
 class SetupDlg:
-    """视频设置对话框"""
     def __init__(self, parent):
         self.parent = parent
         self.cfg = None
@@ -177,7 +175,7 @@ class VideoConverter:
         return settings
 
     def setup_ui(self):
-        self.root.title("ASCII视频转换器 V3.0.1 🐾")
+        self.root.title("ASCII视频转换器 V3.0.1 (beta) 🐾")
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -220,9 +218,11 @@ class VideoConverter:
         ttk.Button(
             self.ctrl_frame, text="背景色", command=self.change_bg_color, width=10
         ).pack(side=tk.LEFT, padx=5)
-        ttk.Button(
+        # 保存“打开视频”按钮
+        self.btn_open = ttk.Button(
             self.ctrl_frame, text="打开视频", command=self.open_video, width=10
-        ).pack(side=tk.LEFT, padx=5)
+        )
+        self.btn_open.pack(side=tk.LEFT, padx=5)
         self.btn_start = ttk.Button(
             self.ctrl_frame,
             text="开始",
@@ -231,17 +231,22 @@ class VideoConverter:
             width=10,
         )
         self.btn_start.pack(side=tk.LEFT, padx=5)
-        self.btn_stop = ttk.Button(
-            self.ctrl_frame, text="停止", state=tk.DISABLED, command=self.stop, width=10
+        # 将“停止”按钮改为“清空画布”，默认禁用
+        self.btn_clear = ttk.Button(
+            self.ctrl_frame,
+            text="清空画布",
+            state=tk.DISABLED,
+            command=self.clear_canvas,
+            width=10,
         )
-        self.btn_stop.pack(side=tk.LEFT, padx=5)
+        self.btn_clear.pack(side=tk.LEFT, padx=5)
 
     def show_help(self, event=None):
         if event and event.state & 0x0001:  # 检查Shift键
             dev_info = [
                 "---灵曦工作室---",
-                "版本：V3.0.1",
-                "引擎版本：LX引擎2.0",
+                "版本：V3.0.1 (beta)",
+                "引擎版本：LX引擎1.0",
             ]
             messagebox.showinfo("信息", "\n".join(dev_info))
         else:
@@ -254,7 +259,7 @@ class VideoConverter:
                           帮助手册
           - 背景色 ：自定义背景颜色
           - 打开视频：导入需转换的视频
-          - 开始/停止：控制转换进程
+          - 开始/清空画布：控制转换进程
           快捷键：  
           * 空格键：暂停/继续
           * Esc键：退出程序
@@ -265,7 +270,7 @@ class VideoConverter:
             help_label.pack(pady=10)
 
             bilibili_link = ttk.Label(
-                help_window, text="@玩摄影的程序猿", foreground="blue", cursor="hand2"
+                help_window, text="哔哩哔哩：@玩摄影的程序猿", foreground="blue", cursor="hand2"
             )
             bilibili_link.pack()
             bilibili_link.bind(
@@ -393,7 +398,10 @@ class VideoConverter:
         self.video_path = filedialog.askopenfilename()
         if self.video_path:
             self.init_video_capture()
+            # 启用“开始”按钮
             self.btn_start.config(state=tk.NORMAL)
+            # 导入视频后未开始转换，按钮显示“取消选择”
+            self.btn_clear.config(state=tk.NORMAL, text="取消选择")
             self.update_status(f"已加载: {self.video_path.split('/')[-1]}")
 
     def init_video_capture(self):
@@ -408,13 +416,16 @@ class VideoConverter:
                 raise ValueError("请先打开有效视频文件")
 
             self.is_playing = True
+            # 开始转换后禁用“开始”和“打开视频”按钮
             self.btn_start.config(state=tk.DISABLED)
-            self.btn_stop.config(state=tk.NORMAL)
+            self.btn_open.config(state=tk.DISABLED)
+            # 转换状态下，按钮显示为“清空画布”
+            self.btn_clear.config(text="清空画布")
             threading.Thread(target=self.process_frames, daemon=True).start()
 
         except Exception as e:
             messagebox.showerror("启动错误", f"无法开始转换: {str(e)}")
-            self.stop()
+            self.clear_canvas()  # 出错时清空状态
 
     def process_frames(self):
         while self.is_playing and self.cap.isOpened():
@@ -460,8 +471,8 @@ class VideoConverter:
              你的好奇心让这本喵充满动力！  
               感谢贡献过本项目的小可爱们：  
              你们的爪印让项目更加蓬松柔软~  
-               感谢提出issue的毛球们：  
-            每一个bug报告都是小鱼干般的美味  
+               感谢提出issue的团员们：  
+          每一个bug报告都对这个项目有着推进作用  
                    最后特别感谢：  
             每一位喜欢毛茸茸的你 (๑>ᴗ<๑)"""
         messagebox.showinfo("致谢信", cat_art)
@@ -498,9 +509,36 @@ class VideoConverter:
         except Exception as e:
             print(f"释放视频资源时出错: {str(e)}")
         finally:
-            self.btn_start.config(state=tk.NORMAL)
-            self.btn_stop.config(state=tk.DISABLED)
+            self.btn_clear.config(state=tk.NORMAL)
             self.update_status("已停止 ⏹️")
+
+    def clear_canvas(self):
+        """
+        根据当前状态执行：
+         - 如果视频已开始转换（转换中），则停止转换、清空输出面板、重置视频选择，
+           启用“打开视频”按钮，同时保持“开始”按钮禁用（需重新选择视频）。
+         - 如果视频仅被选择但未开始转换，则取消视频选择、清空输出面板，
+           并禁用“开始”和“清空画布”按钮。
+        """
+        if self.is_playing:
+            # 正在转换状态下，先停止转换
+            self.stop()
+            self.display.delete("1.0", tk.END)
+            self.video_path = ""
+            self.btn_open.config(state=tk.NORMAL)
+            self.btn_start.config(state=tk.DISABLED)
+            self.btn_clear.config(state=tk.DISABLED)
+            self.update_status("已清空画布")
+        else:
+            # 未开始转换时，即“取消选择”状态
+            self.video_path = ""
+            if self.cap:
+                self.cap.release()
+                self.cap = None
+            self.display.delete("1.0", tk.END)
+            self.btn_start.config(state=tk.DISABLED)
+            self.btn_clear.config(state=tk.DISABLED)
+            self.update_status("已取消视频选择")
 
     def exit_app(self, event=None):
         self.stop()
@@ -516,14 +554,14 @@ class VideoConverter:
 
 if __name__ == "__main__":
     root = ttk.Window(title="ASCII视频转换器", themename="pulse")
-    root.withdraw()  # 隐藏主窗口
+    root.withdraw()
 
     # 启动视频设置窗口
     setup = SetupDlg(root)
-    settings = setup.cfg  # 获取用户设置
+    settings = setup.cfg
 
     # 判断并启动主应用程序
     if settings:
-        root.deiconify()  # 显示主窗口
+        root.deiconify()
         app = VideoConverter(root, settings)
         root.mainloop()
